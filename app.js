@@ -7,6 +7,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const findOrCreate = require("mongoose-findorcreate");
 
 const app = express();
 
@@ -28,10 +30,12 @@ mongoose.connect("mongodb://localhost:27017/userDB", {useNewUrlParser: true, use
 
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String
+  password: String,
+  googleId: String
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
 
@@ -46,6 +50,21 @@ passport.deserializeUser(function(id, done) {
     done(err, user);
   });
 });
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets" //possible error is secrets upper or lower case
+    // possible error need to add in option to use google id instead of google plus
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 app.get("/", function(req, res){
   res.render("home");
@@ -71,6 +90,16 @@ app.get("/logout", function(req, res){
   req.logout();
   res.redirect("/");
 });
+
+app.get("/auth/google",
+  passport.authenticate("google", { scope: ["profile"] }));
+
+  app.get("/auth/google/secrets",
+    passport.authenticate('google', { failureRedirect: "/login" }),
+    function(req, res) {
+      // Successful authentication, redirect to secrets page.
+      res.redirect('/secrets');
+    });
 
 app.post("/register", function(req, res) {
   User.register({username: req.body.username}, req.body.password, function(err, user){
